@@ -159,6 +159,35 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     /**
+     * @dev transfers tokens from the sender to the recipient.
+     * this function also mints any accrued interest since the last time the user's balance was updated.
+     * @param _sender the address of the sender
+     * @param _recipient the address of the recipient
+     * @param _amount the amount of tokens to transfer
+     * @return true if the transfer was successful
+     */
+    function transferFrom(address _sender, address _recipient, uint256 _amount)
+        public
+        override
+        returns (bool)
+    {
+        // transfer all the user's balance if the amount is max.
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_sender);
+        }
+        // accumulates the balance of the user so it is up to daate with any interest accumulated.
+        _mintAccruedInterest(_sender);
+        _mintAccruedInterest(_recipient);
+        if(balanceOf(_recipient) == 0) {
+            // update the users interest rate only if they have not yet got one
+            // (or they transferred/burned all their tokens).
+            // otherwise people could force other to have lower interest rates
+            s_userInterestRate[_recipient] = s_interestRate;
+        }
+        return super.transferFrom(_sender, _recipient, _amount);
+    }
+
+    /**
      * @dev accumulates the accrued interest of the user to the principal balance.
      * This function mints the users accrued interest since they last transferred of bridge tokens.
      * @param _user the address of the user for which the interest is being minted
@@ -196,5 +225,22 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         // represents the linear growth over time = 1 + (interest rate * time)
         uint256 linearInterest = (s_userInterestRate[_user] * timeDifference) + PRECISION_FACTOR;
         return linearInterest;
+    }
+
+    /**
+     * @dev returns the global interest rate of the token for future depositors.
+     * @return s_interestRate
+     */
+    function getInterestRate() external view returns (uint256) {
+        return s_interestRate;
+    }
+
+    /**
+     * @dev returns the interest rate of the user
+     * @param _user the address of the user
+     * @return s_userInterestRate[_user] the interest rate of the user
+     */
+    function getUserInterestRate(address _user) external view returns (uint256) {
+        return s_userInterestRate[_user];
     }
 }
