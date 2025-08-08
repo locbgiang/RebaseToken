@@ -143,8 +143,8 @@ contract RebaseTokenTest is Test {
     }
 
     function testTransfer(uint256 amount, uint256 amountToSend) public {
-        amount = bound(amount, 1e5 + 1e5, type(uint96).max);
-        amountToSend = bound(amountToSend, 1e5, amount + 1e3);
+        amount = bound(amount, 1e5 + 1e3, type(uint96).max);
+        amountToSend = bound(amountToSend, 1e5, amount - 1e3);
 
         vm.deal(user, amount);
         vm.prank(user);
@@ -181,5 +181,56 @@ contract RebaseTokenTest is Test {
 
         assertGt(userBalanceAfterWarp, userBalanceAfterTransfer);
         assertGt(userTwoBalanceAfterWarp, userTwoBalanceAfterTransfer);
+    }
+
+    function testSetInterestRate(uint256 newInterestRate) public {
+        // bound the interest rate to be less than the current interest rate
+        newInterestRate = bound(newInterestRate, 0, rebaseToken.getInterestRate() - 1);
+
+        // update the interest rate
+        vm.startPrank(owner);
+        rebaseToken.setInterestRate(newInterestRate);
+        uint256 interestRate = rebaseToken.getInterestRate();
+        assertEq(interestRate, newInterestRate);
+        vm.stopPrank();
+
+        // check that if someone deposits, this is their new interest rate
+        vm.startPrank(user);
+        vm.deal(user, SEND_VALUE);
+        vault.deposit{value: SEND_VALUE}();
+        uint256 userInterestRate = rebaseToken.getUserInterestRate(user);
+        vm.stopPrank();
+        assertEq(userInterestRate, newInterestRate);
+    }
+
+    function testCannotSetInterestRate(uint256 newInterestRate) public {
+        // update the interest rate
+        vm.startPrank(user);
+        vm.expectRevert();
+        rebaseToken.setInterestRate(newInterestRate);
+        vm.stopPrank();
+    }
+
+    function testInterestRateCanOnlyDecrease(uint256 newInterestRate) public {
+        uint256 initialInterestRate = rebaseToken.getInterestRate();
+        newInterestRate = bound(newInterestRate, initialInterestRate + 1, type(uint96).max);
+        vm.prank(owner);
+        vm.expectPartialRevert(bytes4(RebaseToken.RebaseToken__InterestRateCanOnlyDecrease.selector));
+        rebaseToken.setInterestRate(newInterestRate);
+        assertEq(rebaseToken.getInterestRate(), initialInterestRate);
+    }
+
+    function testGetPrincipalAmount() public {
+        uint256 amount = 1e5;
+        vm.deal(user, amount);
+        vm.prank(user);
+        vault.deposit{value: amount}();
+        uint256 principalAmount = rebaseToken.principalBalanceOf(user);
+        assertEq(principalAmount, amount);
+
+        // check that the principal amount is the same after some time has passed
+        vm.warp(block.timestamp + 1 days);
+        uint256 principalAmountAfterWarp = rebaseToken.principalBalanceOf(user);
+        assertEq(principalAmountAfterWarp, amount);
     }
 }
