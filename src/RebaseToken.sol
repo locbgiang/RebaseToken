@@ -58,7 +58,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
      * @dev grants the mint and burn role to an address. This is only called by the protocol owner.
      * @param _address the address to grant the role to
      */
-    function grandMintAndBurnRole(address _address) external onlyOwner {
+    function grantMintAndBurnRole(address _address) external onlyOwner {
         _grantRole(MINT_AND_BURN_ROLE, _address);
     }
 
