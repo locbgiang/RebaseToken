@@ -9,7 +9,7 @@ import {TokenPool} from "@ccip/chains/evm/contracts/pools/TokenPool.sol";
 import {RegistryModuleOwnerCustom} from "@ccip/chains/evm/contracts/tokenAdminRegistry/RegistryModuleOwnerCustom.sol";
 import {TokenAdminRegistry} from "@ccip/chains/evm/contracts/tokenAdminRegistry/TokenAdminRegistry.sol";
 import {RateLimiter} from "@ccip/chains/evm/contracts/libraries/RateLimiter.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@chainlink-local/lib/chainlink-evm/contracts/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/interfaces/IERC20.sol";
 import {IRouterClient} from "@ccip/chains/evm/contracts/interfaces/IRouterClient.sol";
 import {Client} from "@ccip/chains/evm/contracts/libraries/Client.sol";
 
@@ -131,13 +131,35 @@ contract CrossChainTest is Test {
         sourceRebaseToken.grantMintAndBurnRole(address(sourcePool));
         sourceRebaseToken.grantMintAndBurnRole(address(vault));
 
-        // register with ccip admin registry:
-        // registers the token with ccip admin system
+        // registering the rebase token with CCIP administrative system:
+        // so that CCIp recognizes it as a valid token for cross-chain transfers
+
+        // get the reference to CCIP's pre-deployed registry module on sepolia
+        // RegistryModuleOwnerCustom is CCIP's contract that manages token registrations
+        // sepoliaNetworkDetails.registryModuleOwnerCustomAddress is the address of this contract
         registryModuleOwnerCustomSepolia = RegistryModuleOwnerCustom(
             sepoliaNetworkDetails.registryModuleOwnerCustomAddress
         );
+        // registers the rebase token
+        // makes the owner the admin of this token in ccip
         registryModuleOwnerCustomSepolia.registerAdminViaOwner(
             address(sourceRebaseToken)
+        ); 
+
+        // accept the admin role for the token
+        tokenAdminRegistrySepolia = TokenAdminRegistry(
+            sepoliaNetworkDetails.tokenAdminRegistryAddress
         );
+        tokenAdminRegistrySepolia.acceptAdminRole(
+            address(sourceRebaseToken)
+        );
+
+        // links the token to it's pool
+        tokenAdminRegistrySepolia.setPool(
+            address(sourceRebaseToken),
+            address(sourcePool)
+        );
+
+        vm.stopPrank();
     }
 }
