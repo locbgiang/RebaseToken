@@ -48,12 +48,6 @@ contract CrossChainTest is Test {
     RebaseTokenPool destPool;
     RebaseTokenPool sourcePool;
 
-    // Token Admin Registries:
-    // register tokens with CCIP infrastructure
-    // for CCIP to recognize the token as transferable
-    TokenAdminRegistry tokenAdminRegistrySepolia;
-    TokenAdminRegistry tokenAdminRegistryArbSepolia;
-
     // Network details:
     // store chain-specific CCIP configuration
     // contains: router addresses, chain selectors, RMN proxies
@@ -63,8 +57,16 @@ contract CrossChainTest is Test {
     // Registry Modules:
     // Custom ownership modules for token registration
     // control who can modify token pool configurations
+    // (the bouncer, validates who can enter)
     RegistryModuleOwnerCustom registryModuleOwnerCustomSepolia;
     RegistryModuleOwnerCustom registryModuleOwnerCustomArbSepolia;
+
+    // Token Admin Registries:
+    // register tokens with CCIP infrastructure
+    // for CCIP to recognize the token as transferable
+    // (the manager, manages what members can do)
+    TokenAdminRegistry tokenAdminRegistrySepolia;
+    TokenAdminRegistry tokenAdminRegistryArbSepolia;
 
     // 
     Vault vault;
@@ -104,15 +106,16 @@ contract CrossChainTest is Test {
         // owner deploy core contracts
         // deploy rebase token contract on sepolia
         // calls it sourceRebaseToken because it is on the source chain
+        console.log("Deploying RebaseToken on Sepolia...");
         sourceRebaseToken = new RebaseToken();
         console.log("Source rebase token address: ");
         console.log(address(sourceRebaseToken));
-        console.log("Deploying token pool on Sepolia: ");
 
         // now that we have the token
         // the allowlist
         // and the network details
         // deploy a token pool for ccip integration
+        console.log("Deploying token pool on Sepolia...");
         sourcePool = new RebaseTokenPool(
             IERC20(address(sourceRebaseToken)),
             8,
@@ -122,6 +125,7 @@ contract CrossChainTest is Test {
         );
 
         // deploy a vault contract and funds it with 1 ETH
+        console.log("Deploying vault on Sepolia...");
         vault = new Vault(IRebaseToken(address(sourceRebaseToken)));
         vm.deal(address(vault), 1e18);
 
@@ -131,33 +135,102 @@ contract CrossChainTest is Test {
         sourceRebaseToken.grantMintAndBurnRole(address(sourcePool));
         sourceRebaseToken.grantMintAndBurnRole(address(vault));
 
-        // registering the rebase token with CCIP administrative system:
-        // so that CCIp recognizes it as a valid token for cross-chain transfers
-
+        // registering the rebase token with CCIP administrative system
         // get the reference to CCIP's pre-deployed registry module on sepolia
-        // RegistryModuleOwnerCustom is CCIP's contract that manages token registrations
-        // sepoliaNetworkDetails.registryModuleOwnerCustomAddress is the address of this contract
         registryModuleOwnerCustomSepolia = RegistryModuleOwnerCustom(
+            // this is the actual address of the contract on sepolia
             sepoliaNetworkDetails.registryModuleOwnerCustomAddress
         );
-        // registers the rebase token
-        // makes the owner the admin of this token in ccip
+        // registers RebaseToken in CCIP's system
+        // Propose the caller (owner) as the admin for this token
+        // creates a pending admin role
         registryModuleOwnerCustomSepolia.registerAdminViaOwner(
-            address(sourceRebaseToken)
+            address(sourceRebaseToken) // register this token
         ); 
 
         // accept the admin role for the token
+        // get reference to CCIP's pre-deployed token admin registry on sepolia
         tokenAdminRegistrySepolia = TokenAdminRegistry(
+            // this is the actual address of the contract on sepolia
             sepoliaNetworkDetails.tokenAdminRegistryAddress
         );
+        // from that reference, accept the admin role for our token
         tokenAdminRegistrySepolia.acceptAdminRole(
-            address(sourceRebaseToken)
+            address(sourceRebaseToken) // owner accepts being admin for this token
         );
 
         // links the token to it's pool
         tokenAdminRegistrySepolia.setPool(
             address(sourceRebaseToken),
             address(sourcePool)
+        );
+
+        vm.stopPrank();
+
+        // destination chain arbitrum deployment
+        // switch to arbitrum fork
+        vm.selectFork(arbSepoliaFork);
+
+        // get network configuration details for the current chain
+        // (arbSepolia because we switched forks)
+        arbSepoliaNetworkDetails = ccipLocalSimulatorFork.getNetworkDetails(block.chainid);
+        
+        vm.startPrank(owner);
+
+        // deploy the destination RebaseToken contract on arbitrum
+        // calls it destRebaseToken because it is on the destination chain
+        console.log("Deploying RebaseToken on Arbitrum...");
+        destRebaseToken = new RebaseToken();
+
+        console.log("Destination RebaseToken address: ");
+        console.log(address(destRebaseToken));
+
+        // deploy the destination RebaseTokenPool on arbitrum
+        console.log("Deploying token pool on Arbitrum...");
+        destPool = new RebaseTokenPool(
+            IERC20(address(destRebaseToken)),
+            8,
+            allowlist,
+            arbSepoliaNetworkDetails.rmnProxyAddress,
+            arbSepoliaNetworkDetails.routerAddress
+        );
+
+        // deploying vault on arbitrum
+        console.log("Deploying vault on Arbitrum...");
+        Vault arbVault = new Vault(IRebaseToken(address(destRebaseToken)));
+        vm.deal(address(arbVault), 1e18);  // Fund with ETH
+
+        // grant mint/burn role to the destination pool and vault
+        destRebaseToken.grantMintAndBurnRole(address(destPool));
+        destRebaseToken.grantMintAndBurnRole(address(arbVault));
+
+        // registering the rebase token with CCIP administrative system
+        // get the reference to CCIP's pre-deployed registry module on arbitrum
+        registryModuleOwnerCustomArbSepolia = RegistryModuleOwnerCustom(
+            // this is the actual address of the contract on arbitrum
+            arbSepoliaNetworkDetails.registryModuleOwnerCustomAddress
+        );
+        // registers RebaseToken in CCIP's system on arbitrum
+        // propose the caller (owner) as the admin for this token
+        registryModuleOwnerCustomArbSepolia.registerAdminViaOwner(
+            address(destRebaseToken) // register this token
+        );
+
+        // accept the admin role for the token on arbitrum
+        // get reference to CCIP's pre-deployed token admin registry on arbitrum
+        tokenAdminRegistryArbSepolia = TokenAdminRegistry(
+            // this is the actual address of the contract on arbitrum
+            arbSepoliaNetworkDetails.tokenAdminRegistryAddress
+        );
+        // from that reference, accept the admin role for our token
+        tokenAdminRegistryArbSepolia.acceptAdminRole(
+            address(destRebaseToken) // owner accepts being admin for this token
+        );
+
+        // links the token to it's pool on arbitrum
+        tokenAdminRegistryArbSepolia.setPool(
+            address(destRebaseToken),
+            address(destPool)
         );
 
         vm.stopPrank();
