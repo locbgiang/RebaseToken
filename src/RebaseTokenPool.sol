@@ -24,17 +24,29 @@ contract RebaseTokenPool is TokenPool {
         override    // This replaces the parent function
         returns(Pool.LockOrBurnOutV1 memory lockOrBurnOut)
     {
-        // validate the input paremeters
+        // this is a security function inherited from TokenPool
+        // it performs various checks on the incoming cross-chain request
+        // ensures only authorized CCIP contracts (like OnRamp) can call this function
+        // Checks if msg.sender is in the allowlist of permitted callers
         _validateLockOrBurn(lockOrBurnIn);
 
         // get the user interest rate from the original sender
         uint256 userInterestRate = IRebaseToken(address(i_token)).getUserInterestRate(lockOrBurnIn.originalSender);
         
-        // 
+        // burn the tokens from the pool
         IRebaseToken(address(i_token)).burn(address(this), lockOrBurnIn.amount);
 
+        // prepare teh output structure
         lockOrBurnOut = Pool.LockOrBurnOutV1({
+            // the address of the token contract on the destination chain
+            // getRemoteToken looks up the token address for the target chain
+            // tells CCIP where to mint/release tokens on the destination chain
             destTokenAddress: getRemoteToken(lockOrBurnIn.remoteChainSelector),
+
+            // encode data to send to the destination chain's pool
+            // user's interest packed into bytes
+            // preserve the user's interest rate across chains
+            // so the destination pool can mint tokens with the correct state
             destPoolData: abi.encode(userInterestRate)
         });
     } 
