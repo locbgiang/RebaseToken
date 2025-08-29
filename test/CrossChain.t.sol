@@ -236,6 +236,13 @@ contract CrossChainTest is Test {
         vm.stopPrank();
     }
 
+    /**
+     * This function configures cross-chain relationships between two token pools:
+     * Pool A learns about pool B (and vice versa)
+     * cross-chain mappings established
+     * transfer routes configured
+     * rate limits set
+     */
     function configureTokenPool(
         uint256 fork,
         TokenPool localPool,
@@ -243,26 +250,46 @@ contract CrossChainTest is Test {
         IRebaseToken token,
         Register.NetworkDetails memory remoteNetworkDetails
     ) public {
-        vm.selectFork(fork);
+        // this is the chain we are opperating on
+        vm.selectFork(fork); 
+
+        // set msg.sender to owner for permission check
         vm.startPrank(owner);
+
+        // creates an array to hold chain configuration updates
+        // size of 1 because we're configuring one remote chain relationship
         TokenPool.ChainUpdate[] memory chains = new TokenPool.ChainUpdate[](1);
+
+        // creates an array to store remote pool addresses
         bytes[] memory remotePoolAddresses = new bytes[](1);
+
+        // abi.encode(address(remotePool)): converts pool address to bytes format
+        // why bytes? ccip uses bytes to support different address formats across chains
         remotePoolAddresses[0] = abi.encode(address(remotePool));
+
+        // chain updates configuration
         chains[0] = TokenPool.ChainUpdate({
-            remoteChainSelector: remoteNetworkDetails.chainSelector,
+            // remoteChainSelector: Unique ID for destination chain (e.g Arbitrum)
+            remoteChainSelector: remoteNetworkDetails.chainSelector,  
+            // remotePoolAddresses: Which pool(s) handle tokens on remote chain
             remotePoolAddresses: remotePoolAddresses,
-            remoteTokenAddress: abi.encode(address(token)),
-            outboundRateLimiterConfig: RateLimiter.Config({
-                isEnabled: false,
-                capacity: 0,
-                rate: 0
+            // remoteTokenAddress: Which token contract exists on remote chain          
+            remoteTokenAddress: abi.encode(address(token)),    
+            // outboundRateLimiterConfig: Limits for tokens leaving this chain
+            outboundRateLimiterConfig: RateLimiter.Config({    
+                isEnabled: false,       // no rate limiting
+                capacity: 0,            // max tokens in bucket
+                rate: 0                 // refill rate per second
             }),
-            inboundRateLimiterConfig: RateLimiter.Config({
-                isEnabled: false,
-                capacity: 0,
-                rate: 0
+            // inboundRateLimiterConfig: Limits for tokens arriving from remote chain
+            inboundRateLimiterConfig: RateLimiter.Config({      
+                isEnabled: false,       // no rate limiting
+                capacity: 0,            // max tokens in bucket
+                rate: 0                 // refill rate per second
             })
         });
+        // empty array because we're not removing any existing chain configuration
+        // size 0 means 'dont remove any chains'
         uint64[] memory remoteChainSelectorsToRemove = new uint64[](0);
         localPool.applyChainUpdates(remoteChainSelectorsToRemove, chains);
         vm.stopPrank();
