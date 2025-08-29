@@ -227,12 +227,44 @@ contract CrossChainTest is Test {
             address(destRebaseToken) // owner accepts being admin for this token
         );
 
-        // links the token to it's pool on arbitrum
+        // links the token and it's pool on arbitrum
         tokenAdminRegistryArbSepolia.setPool(
             address(destRebaseToken),
             address(destPool)
         );
 
+        vm.stopPrank();
+    }
+
+    function configureTokenPool(
+        uint256 fork,
+        TokenPool localPool,
+        TokenPool remotePool,
+        IRebaseToken token,
+        Register.NetworkDetails memory remoteNetworkDetails
+    ) public {
+        vm.selectFork(fork);
+        vm.startPrank(owner);
+        TokenPool.ChainUpdate[] memory chains = new TokenPool.ChainUpdate[](1);
+        bytes[] memory remotePoolAddresses = new bytes[](1);
+        remotePoolAddresses[0] = abi.encode(address(remotePool));
+        chains[0] = TokenPool.ChainUpdate({
+            remoteChainSelector: remoteNetworkDetails.chainSelector,
+            remotePoolAddresses: remotePoolAddresses,
+            remoteTokenAddress: abi.encode(address(token)),
+            outboundRateLimiterConfig: RateLimiter.Config({
+                isEnabled: false,
+                capacity: 0,
+                rate: 0
+            }),
+            inboundRateLimiterConfig: RateLimiter.Config({
+                isEnabled: false,
+                capacity: 0,
+                rate: 0
+            })
+        });
+        uint64[] memory remoteChainSelectorsToRemove = new uint64[](0);
+        localPool.applyChainUpdates(remoteChainSelectorsToRemove, chains);
         vm.stopPrank();
     }
 }
